@@ -14,7 +14,7 @@ Flask-Bcrypt==1.0.1
 
 # Database
 psycopg2-binary==2.9.9
-SQLAlchemy==2.0.23
+SQLAlchemy==2.0.47
 
 # Email (optional - for verification emails)
 Flask-Mail==0.9.1
