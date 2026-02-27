@@ -14,7 +14,7 @@ from flask_jwt_extended import (
     JWTManager, create_access_token, create_refresh_token,
     jwt_required, get_jwt_identity, get_jwt
 )
-from sqlalchemy import desc
+
 from werkzeug.exceptions import HTTPException
 
 from config import get_config
@@ -337,23 +337,8 @@ class SellerList(Resource):
     """List all sellers"""
     
     def get(self):
-        # parser = reqparse.RequestParser()
-        # parser.add_argument('category', type=str)
-        # parser.add_argument('limit', type=int)
-        # parser.add_argument('top', type=str)
-        # args = p bg/
+        
         sellers = Seller.query.all()
-        
-        # if args.get('category'):
-        #     query = query.filter_by(category=args['category'])
-        
-        # if args.get('top') == 'true':
-        #     query = query.order_by(desc(Seller.rating))
-        
-        # if args.get('limit'):
-        #     query = query.limit(args['limit'])
-        
-        # sellers = query.all()
         
         return {
             'success': True,
@@ -513,27 +498,10 @@ class ProductList(Resource):
     """List and create products"""
     
     def get(self):
-        # parser = reqparse.RequestParser()
-        # parser.add_argument('category', type=str)
-        # parser.add_argument('seller_id', type=int)
-        # parser.add_argument('limit', type=int)
-        # parser.add_argument('top', type=str)
-        # args = parser.parse_args()
+        
         
         query = Product.query
-        
-        # if args.get('category'):
-        #     query = query.filter_by(category=args['category'])
-        
-        # if args.get('seller_id'):
-        #     products = query.filter_by(seller_id=args['seller_id'])
-        
-        # if args.get('top') == 'true':
-        #     query = query.order_by(desc(Product.votes))
-        
-        # if args.get('limit'):
-        #     query = query.limit(args['limit'])
-        
+                
         products = query.all()
         print(products)
         return {
