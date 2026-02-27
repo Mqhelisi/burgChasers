@@ -14,7 +14,6 @@ from flask_jwt_extended import (
     JWTManager, create_access_token, create_refresh_token,
     jwt_required, get_jwt_identity, get_jwt
 )
-from flask_migrate import Migrate
 from sqlalchemy import desc
 from werkzeug.exceptions import HTTPException
 
@@ -33,7 +32,7 @@ def create_app(config_name=None):
     # Initialize extensions
     db.init_app(app)
     bcrypt.init_app(app)
-    migrate = Migrate(app, db)
+    
     CORS(app, 
          origins=app.config['CORS_ORIGINS'],
          supports_credentials=app.config['CORS_SUPPORTS_CREDENTIALS'])
