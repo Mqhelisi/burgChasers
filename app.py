@@ -4,7 +4,12 @@ Flask Application with Flask-RESTful API
 This is a complete rewrite with proper error handling,
 validation, and authorization to fix 422 errors.
 """
-
+import base64
+from PIL import Image
+import os
+import requests
+from io import BytesIO
+from typing import Union, IO, Optional
 import os
 from datetime import datetime
 from flask import Flask, request, jsonify
@@ -14,11 +19,111 @@ from flask_jwt_extended import (
     JWTManager, create_access_token, create_refresh_token,
     jwt_required, get_jwt_identity, get_jwt
 )
-
+from flask_migrate import Migrate
+from sqlalchemy import desc
 from werkzeug.exceptions import HTTPException
 
 from config import get_config
 from models import db, bcrypt, User, Seller, Product, Vote, Review
+
+
+
+def upload_to_imgbb(
+    image: Union[str, bytes, IO[bytes]],
+    api_key: Optional[str] = None
+) -> str:
+    """
+    Upload an image to imgbb.com and return the direct image URL.
+
+    Args:
+        image: The image to upload. Can be:
+            - A string (file path) to a local image.
+            - A bytes object containing the image data.
+            - A file-like object (e.g., an open binary file) with a .read() method.
+        api_key: Your imgbb API key. If not provided, the function will try to
+                 read it from the environment variable `IMGBB_API_KEY`.
+
+    Returns:
+        str: The direct URL of the uploaded image (e.g., https://i.ibb.co/.../image.jpg).
+
+    Raises:
+        ValueError: If no API key is found.
+        requests.exceptions.RequestException: For network or HTTP errors.
+        KeyError: If the API response does not contain the expected image URL.
+        Exception: For other errors reported by the imgbb API.
+    """
+    # --- API key handling ---
+    if api_key is None:
+        api_key = '45a52a52bdb7b5ebce8571ef33df547d'
+    if not api_key:
+        raise ValueError(
+            "No API key provided. Either pass it as an argument or set the "
+            "environment variable IMGBB_API_KEY."
+        )
+
+    # --- Prepare the image payload ---
+    # imgbb accepts the image as a file in a multipart/form-data request.
+    # We need to convert the input into a file-like object that requests can upload.
+
+    if isinstance(image, str):
+        # It's a file path -> open the file in binary mode
+        file_obj = open(image, "rb")
+        # We'll let requests close it automatically after the upload
+    elif isinstance(image, bytes):
+        # It's raw bytes -> wrap in a BytesIO to make it file-like
+        file_obj = BytesIO(image)
+    elif hasattr(image, "read"):
+        # It's already file-like (e.g., an open file, BytesIO, etc.)
+        file_obj = image
+    else:
+        raise TypeError(
+            "Unsupported image type. Expected a file path (str), bytes, "
+            "or a file-like object with a .read() method."
+        )
+
+    # --- Build the request ---
+    url = "https://api.imgbb.com/1/upload"
+    params = {
+        "key": api_key,
+        # You can also add optional parameters like "name" or "expiration" here.
+    }
+    files = {
+        "image": file_obj,  # requests will set the filename and content-type
+    }
+
+    # --- Perform the upload ---
+    try:
+        response = requests.post(url, params=params, files=files)
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx, 5xx)
+
+        # Parse the JSON response
+        data = response.json()
+
+        # Check if the API returned an error (imgbb puts errors in the 'error' field)
+        if "error" in data:
+            raise Exception(f"imgbb API error: {data['error']['message']}")
+
+        # Extract the direct image URL
+        # According to imgbb API docs, the URL is located at data['data']['url']
+        image_url = data["data"]["url"]
+        return image_url
+
+    except KeyError as e:
+        # If the expected structure is missing, raise a clear error
+        raise KeyError(
+            "Unexpected response format from imgbb. Could not find 'data.url'. "
+            f"Full response: {data}"
+        ) from e
+    finally:
+        # If we opened the file ourselves (because it was a path), close it.
+        # For bytes or existing file objects, we leave them open for the caller to manage.
+        if isinstance(image, str) and 'file_obj' in locals():
+            file_obj.close()
+
+# # Example usage:
+# image_url = upload_to_imgbb("./GOW.jpg")
+# print(image_url)
+
 
 
 def create_app(config_name=None):
@@ -32,7 +137,7 @@ def create_app(config_name=None):
     # Initialize extensions
     db.init_app(app)
     bcrypt.init_app(app)
-    
+    migrate = Migrate(app, db)
     CORS(app, 
          origins=app.config['CORS_ORIGINS'],
          supports_credentials=app.config['CORS_SUPPORTS_CREDENTIALS'])
@@ -337,8 +442,23 @@ class SellerList(Resource):
     """List all sellers"""
     
     def get(self):
-        
+        # parser = reqparse.RequestParser()
+        # parser.add_argument('category', type=str)
+        # parser.add_argument('limit', type=int)
+        # parser.add_argument('top', type=str)
+        # args = p bg/
         sellers = Seller.query.all()
+        
+        # if args.get('category'):
+        #     query = query.filter_by(category=args['category'])
+        
+        # if args.get('top') == 'true':
+        #     query = query.order_by(desc(Seller.rating))
+        
+        # if args.get('limit'):
+        #     query = query.limit(args['limit'])
+        
+        # sellers = query.all()
         
         return {
             'success': True,
@@ -498,10 +618,17 @@ class ProductList(Resource):
     """List and create products"""
     
     def get(self):
-        
+        # parser = reqparse.RequestParser()
+        # parser.add_argument('category', type=str)
+        # parser.add_argument('seller_id', type=int)
+        # parser.add_argument('limit', type=int)
+        # parser.add_argument('top', type=str)
+        # args = parser.parse_args()
         
         query = Product.query
-                
+        
+
+        
         products = query.all()
         print(products)
         return {
@@ -557,6 +684,15 @@ class ProductList(Resource):
                 'success': False,
                 'message': 'Maximum 5 images allowed per product'
             }, 400
+        imgurls = []
+        for each in images:
+            comma = each.find(",")
+            image64 = each[comma+1:]
+            bytes_decoded = base64.b64decode(image64)
+            image_obj = BytesIO(bytes_decoded)
+            image_url = upload_to_imgbb(image_obj)
+            print(image_url)
+            imgurls.append(image_url)
         
         # Create product
         product = Product(
@@ -565,7 +701,7 @@ class ProductList(Resource):
             price=args['price'],
             category=user.category,
             description=args.get('description', ''),
-            images=images
+            images=imgurls
         )
         
         db.session.add(product)
