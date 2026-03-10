@@ -221,6 +221,7 @@ def register_resources(api):
     api.add_resource(VerifySeller, '/sellers/<int:seller_id>/verify')
     api.add_resource(ProdBySeller, '/seller_prods/<int:seller_id>')
     api.add_resource(PendingVerifications, '/sellers/pending-verifications')
+    api.add_resource(UpdateSeller, '/sellers/<int:seller_id>')
     
     # Products
     api.add_resource(ProductList, '/products')
@@ -561,6 +562,90 @@ class VerifySeller(Resource):
             'user': user.to_dict(),
             'message': 'Seller verified successfully! Can now post up to 15 products.'
         }, 200
+
+
+class UpdateSeller(Resource):
+
+    @jwt_required()
+    def put(self, seller_id):
+        """Update seller profile (owner only)
+
+        Accepts JSON body with optional fields:
+        name, description, phone, website, category, avatar, banner
+        Images may be sent as data URLs or remote URLs; data URLs
+        will be uploaded to imgbb and replaced with the resulting link.
+        """
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        if not user or user.role != 'seller' or user.seller_id != seller_id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+        seller = Seller.query.get(seller_id)
+        if not seller:
+            return jsonify({'success': False, 'message': 'Seller not found'}), 404
+
+        parser = reqparse.RequestParser()
+        parser.add_argument('name', type=str, required=True, help='Product name is required')
+        parser.add_argument('description', type=str, required=True, help='Price is required')
+        parser.add_argument('phone', type=str)
+        parser.add_argument('website', type=str, location='json')
+        parser.add_argument('category', type=str, location='json')
+        
+        data = request.get_json(silent=True) or {}
+        try:
+            args = parser.parse_args()
+                  # simple field updates
+            if 'name' in data:
+                seller.name = args['name']
+            if 'description' in data:
+                seller.description = args['description']
+            if 'phone' in data:
+                seller.phone = args['phone']
+            if 'website' in data:
+                seller.website = args['website']
+            if 'category' in data:
+                seller.category = args['category']
+                # also propagate category to user object so UI can stay in sync
+                user.category = args['category']
+
+        except Exception as e:
+            return {
+                'success': False,
+                'message': 'Invalid input data',
+                'errors': str(e)
+            }, 400
+  
+        # handle avatar/banner uploads
+        for img_field in ('avatar', 'banner'):
+            if img_field in data:
+                item = data[img_field]
+                try:
+                    if isinstance(item, str) and item.startswith('data:'):
+                        # strip metadata and decode
+                        _, b64 = item.split(',', 1)
+                        raw = base64.b64decode(b64)
+                        url = upload_to_imgbb(raw)
+                    elif isinstance(item, str) and item.startswith('http'):
+                        url = item
+                    else:
+                        # fallback – treat as raw bytes
+                        url = upload_to_imgbb(item)
+                    setattr(seller, img_field, url)
+                except Exception as e:
+                    print(f"Error uploading {img_field}: {e}")
+                    return jsonify({'success': False, 'message': 'Image upload failed'}), 500
+
+        # optionally allow updating user name through ownerName field
+        if 'ownerName' in data:
+            user.name = data['ownerName']
+
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'seller': seller.to_dict(),
+            'user': user.to_dict()
+        }), 200
+    
 
 
 class PendingVerifications(Resource):
