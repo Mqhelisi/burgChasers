@@ -585,28 +585,23 @@ class UpdateSeller(Resource):
             return jsonify({'success': False, 'message': 'Seller not found'}), 404
 
         parser = reqparse.RequestParser()
-        parser.add_argument('name', type=str, required=True, help='Product name is required')
-        parser.add_argument('description', type=str, required=True, help='Price is required')
-        parser.add_argument('phone', type=str)
+        parser.add_argument('name', type=str, required=True, help='Your name is required')
+        parser.add_argument('description', type=str, required=True, help='A description is required')
+        parser.add_argument('phone', type=str, required=True, help='A phone number is required')
         parser.add_argument('website', type=str, location='json')
         parser.add_argument('category', type=str, location='json')
         
-        data = request.get_json(silent=True) or {}
         try:
             args = parser.parse_args()
                   # simple field updates
-            if 'name' in data:
-                seller.name = args['name']
-            if 'description' in data:
-                seller.description = args['description']
-            if 'phone' in data:
-                seller.phone = args['phone']
-            if 'website' in data:
-                seller.website = args['website']
-            if 'category' in data:
-                seller.category = args['category']
-                # also propagate category to user object so UI can stay in sync
-                user.category = args['category']
+       
+            seller.name = args['name']
+            seller.description = args['description']
+            seller.phone = args['phone']
+            seller.website = args['website']
+            seller.category = args['category']
+            # also propagate category to user object so UI can stay in sync
+            user.category = args['category']
 
         except Exception as e:
             return {
@@ -617,8 +612,8 @@ class UpdateSeller(Resource):
   
         # handle avatar/banner uploads
         for img_field in ('avatar', 'banner'):
-            if img_field in data:
-                item = data[img_field]
+            if img_field in args:
+                item = args[img_field]
                 try:
                     if isinstance(item, str) and item.startswith('data:'):
                         # strip metadata and decode
